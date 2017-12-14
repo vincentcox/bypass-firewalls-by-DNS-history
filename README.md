@@ -1,4 +1,4 @@
-# bypass-firewalls-like-cloudflare-by-dns-history
+# Bypass firewalls like cloudflare by dns-history
 This script will try to find:
 - the direct IP adress of a server behind a firewall like Cloudflare, Incapsula, ...
 - an old server still running the same website: this might be interesting to find an outdated and vulnerable version of the website you are trying to attack. For example, it might be easier to find SQL injections and find old credentials. 
