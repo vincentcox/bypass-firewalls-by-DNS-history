@@ -1,24 +1,25 @@
-# Bypass firewalls like cloudflare by dns-history
+# Bypass firewalls by abusing DNS history
 This script will try to find:
-- the direct IP adress of a server behind a firewall like Cloudflare, Incapsula, ...
-- an old server still running the same website: this might be interesting to find an outdated and vulnerable version of the website you are trying to attack. For example, it might be easier to find SQL injections and find old credentials. 
+- the direct IP address of a server behind a firewall like Cloudflare, Incapsula, SUCURI ...
+- an old server which still running the same (inactive and unmaintained) website, not receiving active traffic because the A DNS record is not pointing towards it. Because it's an outdated and unmaintained website version of the current active one, it is likely vulnerable for various exploits. It might be easier to find SQL injections and access the database of the old website and abuse this information to use on the current and active website. 
 
 
-This script works with DNS history records. This script will search for old DNS A records **and** check if the server replies for that domain. 
+This script (ab)uses DNS history records. This script will search for old DNS A records **and** check if the server replies for that domain. 
 
-_Keep in mind that this script is hacked together, so it's not the most efficient and beautiful script. But it works. Feel free to improve the script._
+_Keep in mind that this script is smashed together. Therefore, it's not the most efficient and beautiful script. But it works. Feel free to improve the script._
 
-More updates and features for this script are planned. 
+More updates and features for this script are planned, so feel free to star this repo for improvements and additional functionality.
 
 ## For who is this script?
 This script is handy for:
 - Security auditors
-- Bugbounty hunters
+- Web administrators
+- Bug bounty hunters
 - Blackhatters I guess ¯\\\_(ツ)\_/¯
 
 ## How to protect against this script?
-- If you use a firewall, make sure to accept only traffic coming trough the firewall. Deny all traffic coming directly from the internet. For example: cloudflare has a [list of IP's](https://www.cloudflare.com/ips/) which you can whitelist with iptables or UFW.  
-- Make sure that no old servers are still accepting connections
+- If you use a firewall, make sure to accept only traffic coming through the firewall. Deny all traffic coming directly from the internet. For example: Cloudflare has a [list of IP's](https://www.cloudflare.com/ips/) which you can whitelist with iptables or UFW. Deny all other traffic. 
+- Make sure that no old servers are still accepting connections and not accessible in the first place
 
 ## Used services in this script
 The following services were used:
@@ -27,5 +28,7 @@ The following services were used:
 
 ## Author
 Vincent Cox
+
 Bug Bounty account: https://www.intigriti.com/public/profile/vincentcox
+
 Website: https://vincentcox.com
