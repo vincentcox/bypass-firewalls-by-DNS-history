@@ -1,8 +1,33 @@
 #!/usr/bin/env bash
-#Fucked together by Vincent Cox
+
+# Check if files in sources folder are also executable
+i=0
+for file in sources/*
+do
+	if [[ $i -ne 0 ]]; then continue; fi
+	if ! [[ -x "$file" ]]; then
+		echo 'The files in the sources folder are not executable. '
+		echo 'Execute: chmod +x sources/*'
+		exit 0
+	fi
+	i=$(($i+1))
+done
+
+# For the TL;DR people:
+
+if [[ $# -eq 0 ]] ; then
+    echo 'The script needs obviously a website name.'
+	echo 'usage: ./dns-history-find-server.sh example.com'
+    exit 0
+fi
+
+# Color's
+
 GREEN='\033[1;32m'
 NC='\033[0m' # No Color
 RED='\033[1;31m'
+
+# Actual script
 
 domain="$1"
 list_ips=$( sources/dnshistory.org.sh "$domain" )
