@@ -10,6 +10,15 @@ _Keep in mind that this script is smashed together. Therefore, it's not the most
 
 More updates and features for this script are planned, so feel free to star this repo for improvements and additional functionality.
 
+## Usage
+Make sure you made the script and the files in the sources folder executable:
+
+`sudo chmod +x dns-history-find-server.sh && sudo chmod +x sources/*`
+
+Use the script like this: 
+
+`./dns-history-find-server.sh example.com`
+
 ## For who is this script?
 This script is handy for:
 - Security auditors
