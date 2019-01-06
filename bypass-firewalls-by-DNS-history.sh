@@ -175,7 +175,11 @@ fi
 # New Output
 touch /tmp/waf-bypass-output.txt # If no IP's were found, the script will be empty.
 # TAC is needed to give priority to higher percentages. Otherwise you will burn valid bypasses
-cat "/tmp/waf-bypass-output.txt" | tail -r | sort -u -n | column -s"|" -t
+if [[ "$OSTYPE" == "darwin"* ]]; then
+  cat "/tmp/waf-bypass-output.txt" | tail -r | sort -u -n | column -s"|" -t
+else
+  cat "/tmp/waf-bypass-output.txt" | tac | sort -u -n | column -s"|" -t
+fi
 
 # Cleanup temp files
 rm /tmp/waf-bypass-*
