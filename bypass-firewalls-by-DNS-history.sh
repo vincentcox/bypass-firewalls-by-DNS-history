@@ -86,8 +86,6 @@ if (curl --silent -v http://$domain 2>&1|tr '\n' ' '| grep -e "Moved Permanently
 fi
 } &> /dev/null # hide verbose output curl, somehow --silent is not enough when verbose is on.
 
-echo -e "[IP] | [Confidence]" >>  /tmp/waf-bypass-output.txt
-
 ## This function is called to do the actual comparing
 function matchmaking {
 file1=$1
@@ -123,13 +121,14 @@ if [ -z "$outfile" ]; then
 	  rm "$outfile"
 	fi
 fi
+
 # Gather possible IP's of the origin server
 ## Subdomains: we will also get the ip's of subdomains. Sometimes this is hosted on the same server.
 ## This is a quick subdomain function. This oneliner doesn't get all subdomains, but it's something.
 curl -s https://certspotter.com/api/v0/certs?domain=$domain | jq -c '.[].dns_names' | grep -o '"[^"]\+"' | grep "$domain" | sed 's/"//g' >> /tmp/waf-bypass-domains.txt
 echo "$domain" >> /tmp/waf-bypass-domains.txt # Add own domain
 cat  /tmp/waf-bypass-domains.txt | sort -u | grep -v -E '\*' >  /tmp/waf-bypass-domains-filtered.txt
-# Read file to array. Readarray doesn't work on OS X, so we use the traditional way. 
+# Read file to array. Readarray doesn't work on OS X, so we use the traditional way.
 while IFS=\= read var; do
     domainlist+=($var)
 done < /tmp/waf-bypass-domains-filtered.txt
@@ -163,7 +162,10 @@ if [ ! -f "$outfile" ]; then
 else
   echo -e "${GREEN}[+] Bypass found!${NC}"
 	sort -u -o "$outfile" "$outfile"
-  content=$(cat "$outfile")
+  echo -e "[IP] | [Confidence]" >>  /tmp/waf-bypass-output2.txt
+  cat /tmp/waf-bypass-output.txt >> /tmp/waf-bypass-output2.txt
+  cat /tmp/waf-bypass-output2.txt > /tmp/waf-bypass-output.txt
+
 fi
 
 # New Output
