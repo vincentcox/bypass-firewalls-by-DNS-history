@@ -129,7 +129,10 @@ fi
 curl -s https://certspotter.com/api/v0/certs?domain=$domain | jq -c '.[].dns_names' | grep -o '"[^"]\+"' | grep "$domain" | sed 's/"//g' >> /tmp/waf-bypass-domains.txt
 echo "$domain" >> /tmp/waf-bypass-domains.txt # Add own domain
 cat  /tmp/waf-bypass-domains.txt | sort -u | grep -v -E '\*' >  /tmp/waf-bypass-domains-filtered.txt
-readarray domainlist < /tmp/waf-bypass-domains-filtered.txt
+# Read file to array. Readarray doesn't work on OS X, so we use the traditional way. 
+while IFS=\= read var; do
+    domainlist+=($var)
+done < /tmp/waf-bypass-domains-filtered.txt
 # echo "Using the IP's of the following (sub)domains for max coverage:"
 # echo $(echo ${domainlist[*]})
 echo -e "${YELLOW}[-] $(echo ${#domainlist[@]}) Domains collected...${NC}"
@@ -142,7 +145,7 @@ do
    list_ips=$list_ips" "$( curl -s 'http://www.crimeflare.com:82/cgi-bin/cfsearch.cgi' -H 'Connection: keep-alive' -H 'Pragma: no-cache' -H 'Cache-Control: no-cache' -H 'Origin: http://www.crimeflare.com:82' -H 'Upgrade-Insecure-Requests: 1' -H 'DNT: 1' -H 'Content-Type: application/x-www-form-urlencoded' -H 'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.67 Safari/537.36' -H 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8' -H 'Referer: http://www.crimeflare.com:82/cfs.html' -H 'Accept-Encoding: gzip, deflate' -H 'Accept-Language: en-US,en;q=0.9,nl;q=0.8' --data "cfS=$domainitem" --compressed  | grep -o '[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}' )
 done
 list_ips=$(echo $list_ips | tr " " "\n" | sort -u )
-echo -e "${YELLOW}[-] $( echo $list_ips | tr " " "\n" | wc -l) IP's gathered from DNS history...${NC}"
+echo -e "${YELLOW}[-] $( echo $list_ips | tr " " "\n" | wc -l | tr -d '[:space:]') IP's gathered from DNS history...${NC}"
 # For each IP test the bypass and calculate the match %
 for ip in $list_ips;do
 protocol="https"
@@ -166,7 +169,7 @@ fi
 # New Output
 touch /tmp/waf-bypass-output.txt # If no IP's were found, the script will be empty.
 # TAC is needed to give priority to higher percentages. Otherwise you will burn valid bypasses
-cat "/tmp/waf-bypass-output.txt" | tac | sort -u -n | column -s"|" -t
+cat "/tmp/waf-bypass-output.txt" | tail -r | sort -u -n | column -s"|" -t
 
 # Cleanup temp files
 rm /tmp/waf-bypass-*
