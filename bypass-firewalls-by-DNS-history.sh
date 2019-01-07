@@ -122,6 +122,62 @@ if [ -z "$outfile" ]; then
 	fi
 fi
 
+# Exclude Public Known WAF IP's
+PUBLICWAFS='103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 104.16.0.0/12 108.162.192.0/18 131.0.72.0/22 141.101.64.0/18 162.158.0.0/15 172.64.0.0/13 173.245.48.0/20 188.114.96.0/20 190.93.240.0/20 197.234.240.0/22 198.41.128.0/17 199.83.128.0/21 198.143.32.0/19 149.126.72.0/21 103.28.248.0/22 45.64.64.0/22 185.11.124.0/22 192.230.64.0/18 107.154.0.0/16 45.60.0.0/16 45.223.0.0/16'
+function in_subnet {
+    # Determine whether IP address is in the specified subnet.
+    #
+    # Args:
+    #   sub: Subnet, in CIDR notation.
+    #   ip: IP address to check.
+    #
+    # Returns:
+    #   1|0
+    #
+    local ip ip_a mask netmask sub sub_ip rval start end
+
+    # Define bitmask.
+    local readonly BITMASK=0xFFFFFFFF
+
+    # Read arguments.
+    IFS=/ read sub mask <<< "${1}"
+    IFS=. read -a sub_ip <<< "${sub}"
+    IFS=. read -a ip_a <<< "${2}"
+
+    # Calculate netmask.
+    netmask=$(($BITMASK<<$((32-$mask)) & $BITMASK))
+
+    # Determine address range.
+    start=0
+    for o in "${sub_ip[@]}"
+    do
+        start=$(($start<<8 | $o))
+    done
+
+    start=$(($start & $netmask))
+    end=$(($start | ~$netmask & $BITMASK))
+
+    # Convert IP address to 32-bit number.
+    ip=0
+    for o in "${ip_a[@]}"
+    do
+        ip=$(($ip<<8 | $o))
+    done
+
+    # Determine if IP in range.
+    (( $ip >= $start )) && (( $ip <= $end )) && rval=1 || rval=0
+    echo "${rval}"
+}
+
+function ip_is_waf {
+IP=$1
+for subnet in $PUBLICWAFS
+do
+    (( $(in_subnet $subnet $IP) )) &&
+        echo 1 && break
+done
+}
+
 # Gather possible IP's of the origin server
 ## Subdomains: we will also get the ip's of subdomains. Sometimes this is hosted on the same server.
 ## This is a quick subdomain function. This oneliner doesn't get all subdomains, but it's something.
@@ -151,12 +207,14 @@ list_ips=$(echo $list_ips | tr " " "\n" | sort -u )
 echo -e "${YELLOW}[-] $( echo $list_ips | tr " " "\n" | wc -l | tr -d '[:space:]') IP's gathered from DNS history...${NC}"
 # For each IP test the bypass and calculate the match %
 for ip in $list_ips;do
-protocol="https"
-(if (curl --fail --max-time 10 --silent -k "$protocol://$domain" --resolve "$domain:443:$ip" | grep "html" | grep -q -v "was rejected" );then if [[ $currentips != *"$ip"* ]];then curl --silent -o "/tmp/waf-bypass-$protocol-$ip" -k -H "Host: $domain" "$protocol"://"$ip"/ ; matchmaking "/tmp/waf-bypass-$protocol-$domain" "/tmp/waf-bypass-$protocol-$ip" "$ip";wait; fi; fi) & pid=$!;
-PID_LIST+=" $pid";
-protocol="http"
-(if (curl --fail --max-time 10 --silent -k "$protocol://$domain" --resolve "$domain:80:$ip" | grep "html" | grep -q -v "was rejected" );then if [[ $currentips != *"$ip"* ]];then curl --silent -o "/tmp/waf-bypass-$protocol-$ip" -k -H "Host: $domain" "$protocol"://"$ip"/ ; matchmaking "/tmp/waf-bypass-$protocol-$domain" "/tmp/waf-bypass-$protocol-$ip" "$ip";wait; fi; fi) & pid=$!;
-PID_LIST+=" $pid";
+  if [[ $(ip_is_waf $ip) -eq 0 ]];then
+    protocol="https"
+    (if (curl --fail --max-time 10 --silent -k "$protocol://$domain" --resolve "$domain:443:$ip" | grep "html" | grep -q -v "was rejected" );then if [[ $currentips != *"$ip"* ]];then curl --silent -o "/tmp/waf-bypass-$protocol-$ip" -k -H "Host: $domain" "$protocol"://"$ip"/ ; matchmaking "/tmp/waf-bypass-$protocol-$domain" "/tmp/waf-bypass-$protocol-$ip" "$ip";wait; fi; fi) & pid=$!;
+    PID_LIST+=" $pid";
+    protocol="http"
+    (if (curl --fail --max-time 10 --silent -k "$protocol://$domain" --resolve "$domain:80:$ip" | grep "html" | grep -q -v "was rejected" );then if [[ $currentips != *"$ip"* ]];then curl --silent -o "/tmp/waf-bypass-$protocol-$ip" -k -H "Host: $domain" "$protocol"://"$ip"/ ; matchmaking "/tmp/waf-bypass-$protocol-$domain" "/tmp/waf-bypass-$protocol-$ip" "$ip";wait; fi; fi) & pid=$!;
+    PID_LIST+=" $pid";
+  fi
 done
 echo -e "${YELLOW}[-] Launched requests to origin servers...${NC}"
 trap "kill $PID_LIST" SIGINT
