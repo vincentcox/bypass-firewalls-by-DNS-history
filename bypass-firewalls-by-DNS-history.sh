@@ -178,6 +178,20 @@ do
 done
 }
 
+# Get subdomains from DNSDumpster
+function dnsdumpster_subdomains {
+domain=$1
+curl https://dnsdumpster.com -o /dev/null -c /tmp/dnsdumpster-$domain-cookies.txt -s
+CSRF="$(grep csrftoken /tmp/dnsdumpster-$domain-cookies.txt | cut -f 7)"
+curl -s -X 'POST' -H 'Host: dnsdumpster.com' -H 'Pragma: no-cache' -H 'Cache-Control: no-cache' -H 'Upgrade-Insecure-Requests: 1' -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/71.0.3578.98 Safari/537.36' -H 'Origin: https://dnsdumpster.com' -H 'Content-Type: application/x-www-form-urlencoded' -H 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8' -H 'Referer: https://dnsdumpster.com/' -H 'Accept-Language: en-US,en;q=0.9,nl;q=0.8' -H "Cookie: csrftoken=$CSRF" -b "csrftoken=$CSRF" --data-binary "csrfmiddlewaretoken=$CSRF&targetip=$domain" -o /tmp/dnsdumpster-$domain-output.txt 'https://dnsdumpster.com/'
+regex='\w*\.'$domain
+cat /tmp/dnsdumpster-$domain-output.txt | grep -oh "$regex" | sort -u
+rm /tmp/dnsdumpster-$domain-output.txt
+rm /tmp/dnsdumpster-$domain-cookies.txt
+}
+echo "$(dnsdumpster_subdomains $domain)" >> /tmp/waf-bypass-domains.txt
+
+
 # Gather possible IP's of the origin server
 ## Subdomains: we will also get the ip's of subdomains. Sometimes this is hosted on the same server.
 ## This is a quick subdomain function. This oneliner doesn't get all subdomains, but it's something.
