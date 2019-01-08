@@ -1,4 +1,5 @@
 # Bypass firewalls by abusing DNS history
+![](https://img.shields.io/github/issues/vincentcox/bypass-firewalls-by-DNS-history.svg) ![](https://img.shields.io/github/license/vincentcox/bypass-firewalls-by-DNS-history.svg) ![](https://img.shields.io/badge/Mac%20%26%20Linux-Compatible-green.svg)
 ![Tool overview](https://i.imgur.com/Y397Gjo.png)
 
 This script will try to find:
@@ -7,6 +8,8 @@ This script will try to find:
 
 This script (ab)uses DNS history records. This script will search for old DNS A records **and** check if the server replies for that domain.
 __It also outputs a confidence level, based on the similarity in HTML response of the possible origin server and the firewall.__
+
+The script also fetches the IP's of subdomains because my own experience learned me that subdomain IP's sometimes point to the origin of the main domain.
 
 ## Usage
 Use the script like this:
@@ -33,16 +36,18 @@ This script is handy for:
 - Make sure that no old servers are still accepting connections and not accessible in the first place
 
 ## Web services used in this script
-The following services were used:
-- securitytrails.com
-- certspotter.com
+The following services are used:
+- [SecurityTrails](https://securitytrails.com)
+- [CrimeFlare](http://crimeflare.org:82/)
+- [certspotter](https://certspotter.com)
+- [DNSDumpster](https://dnsdumpster.com/)
 
 ## FAQ
 > Why in Bash and not in Python?
 
 It started out as a few CURL one-liners, became a bash script, extended the code more and more, and the regret of not using Python extended accordingly.
 
-> The Subdomain gathering is quite... minimalistic, don't you say?  
+> I find more subdomains with my tools?
 
 I know. I cannot expect everyone to install all these DNS brute-force and enumeration tools. In addition, I don't know beforehand in which folder these tools are placed or under which alias these tools are called. You can still provide your own list with `-l` so you can feed output of these subdomain tools into this tool. Expected input is a full subdomain on each line.
 ## Author
