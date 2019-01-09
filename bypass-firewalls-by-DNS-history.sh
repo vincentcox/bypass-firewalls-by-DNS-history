@@ -90,25 +90,29 @@ fi
 function matchmaking {
 file1=$1
 file2=$2
+touch $file1
+touch $file2
 ip=$3
 thread=$!
 sizefile1=$(cat $file1 | wc -l )
 sizefile2=$(cat $file2 | wc -l )
 biggestsize=$(( $sizefile1 > $sizefile2 ? $sizefile1 : $sizefile2 ))
-difference=$(( $(sdiff -B -b -s $file1 $file2 | wc -l) ))
-confidence_percentage=$(( 100 * (( $biggestsize - ${difference#-} )) / $biggestsize ))
-echo "$ip" >> "$outfile"
-echo -e "$ip | $confidence_percentage %" >>  /tmp/waf-bypass-output.txt
+if [[ $biggestsize -ne 0  ]]; then
+  difference=$(( $(sdiff -B -b -s $file1 $file2 | wc -l) ))
+  confidence_percentage=$(( 100 * (( $biggestsize - ${difference#-} )) / $biggestsize ))
+  echo "$ip" >> "$outfile"
+  echo -e "$ip | $confidence_percentage % | $(curl --silent https://ipinfo.io/$ip/org )" >>  /tmp/waf-bypass-output.txt
 
-### Debugging info
-echo "$file1 $file2" >> /tmp/waf-bypass-thread-$thread.txt
-echo "#Lines $file1: $(cat $file1 | wc -l)" >> /tmp/waf-bypass-thread-$thread.txt
-echo "#Lines $file2: $(cat $file2 | wc -l)" >> /tmp/waf-bypass-thread-$thread.txt
-echo "Different lines: $difference" >> /tmp/waf-bypass-thread-$thread.txt
-echo -e "$ip | $confidence_percentage %" >> /tmp/waf-bypass-thread-$thread.txt
-echo "----" >> /tmp/waf-bypass-thread-$thread.txt
-# Uncomment the following line to output the debugging info.
-# cat /tmp/waf-bypass-thread-$thread.txt
+  ### Debugging info
+  echo "$file1 $file2" >> /tmp/waf-bypass-thread-$thread.txt
+  echo "#Lines $file1: $(cat $file1 | wc -l)" >> /tmp/waf-bypass-thread-$thread.txt
+  echo "#Lines $file2: $(cat $file2 | wc -l)" >> /tmp/waf-bypass-thread-$thread.txt
+  echo "Different lines: $difference" >> /tmp/waf-bypass-thread-$thread.txt
+  echo -e "$ip | $confidence_percentage %" >> /tmp/waf-bypass-thread-$thread.txt
+  echo "----" >> /tmp/waf-bypass-thread-$thread.txt
+  # Uncomment the following line to output the debugging info.
+  # cat /tmp/waf-bypass-thread-$thread.txt
+fi
 }
 
 # Remove current IP's via nslookup
@@ -214,7 +218,7 @@ do
    ### Source: SecurityTrials
    list_ips=$list_ips" "$( curl --max-time 10 -s "https://securitytrails.com/domain/$domainitem/history/a" | grep -o '[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}' )
    ### Source: http://crimeflare.com/
-   list_ips=$list_ips" "$( curl --max-time 10 -s 'http://www.crimeflare.com:82/cgi-bin/cfsearch.cgi' -H 'Connection: keep-alive' -H 'Pragma: no-cache' -H 'Cache-Control: no-cache' -H 'Origin: http://www.crimeflare.com:82' -H 'Upgrade-Insecure-Requests: 1' -H 'DNT: 1' -H 'Content-Type: application/x-www-form-urlencoded' -H 'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.67 Safari/537.36' -H 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8' -H 'Referer: http://www.crimeflare.com:82/cfs.html' -H 'Accept-Encoding: gzip, deflate' -H 'Accept-Language: en-US,en;q=0.9,nl;q=0.8' --data "cfS=$domainitem" --compressed  | grep -o '[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}' )
+   list_ips=$list_ips" "$( curl --max-time 15 -s 'http://www.crimeflare.com:82/cgi-bin/cfsearch.cgi' -H 'Connection: keep-alive' -H 'Pragma: no-cache' -H 'Cache-Control: no-cache' -H 'Origin: http://www.crimeflare.com:82' -H 'Upgrade-Insecure-Requests: 1' -H 'DNT: 1' -H 'Content-Type: application/x-www-form-urlencoded' -H 'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.67 Safari/537.36' -H 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8' -H 'Referer: http://www.crimeflare.com:82/cfs.html' -H 'Accept-Encoding: gzip, deflate' -H 'Accept-Language: en-US,en;q=0.9,nl;q=0.8' --data "cfS=$domainitem" --compressed  | grep -o '[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}' )
 done
 echo ""
 list_ips=$(echo $list_ips | tr " " "\n" | sort -u )
@@ -238,7 +242,7 @@ if [ ! -f "$outfile" ]; then
 else
   echo -e "${GREEN}[+] Bypass found!${NC}"
 	sort -u -o "$outfile" "$outfile"
-  echo -e "[IP] | [Confidence]" >>  /tmp/waf-bypass-output2.txt
+  echo -e "[IP] | [Confidence] | [Organisation]" >>  /tmp/waf-bypass-output2.txt
   cat /tmp/waf-bypass-output.txt >> /tmp/waf-bypass-output2.txt
   cat /tmp/waf-bypass-output2.txt > /tmp/waf-bypass-output.txt
 

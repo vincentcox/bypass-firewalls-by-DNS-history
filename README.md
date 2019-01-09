@@ -1,6 +1,6 @@
 # Bypass firewalls by abusing DNS history
 ![](https://img.shields.io/github/issues/vincentcox/bypass-firewalls-by-DNS-history.svg) ![](https://img.shields.io/github/license/vincentcox/bypass-firewalls-by-DNS-history.svg) ![](https://img.shields.io/badge/Mac%20%26%20Linux-Compatible-green.svg)
-![Tool overview](https://i.imgur.com/Y397Gjo.png)
+![Tool overview](https://i.imgur.com/RrPqt9w.png)
 
 This script will try to find:
 - the direct IP address of a server behind a firewall like Cloudflare, Incapsula, SUCURI ...
@@ -41,6 +41,7 @@ The following services are used:
 - [CrimeFlare](http://crimeflare.org:82/)
 - [certspotter](https://certspotter.com)
 - [DNSDumpster](https://dnsdumpster.com/)
+- [IPinfo](https://ipinfo.io/)
 
 ## FAQ
 > Why in Bash and not in Python?
