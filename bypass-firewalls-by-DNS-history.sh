@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
-# Constants and Variables
+################################################################################
+######################## Constants and variables ###############################
+################################################################################
 SCRIPTPATH="$( cd "$(dirname "$0")" ; pwd -P )"
-## Color's
+# Color's
 GREEN='\033[1;32m'
 NC='\033[0m' # No Color
 RED='\033[1;31m'
 YELLOW='\033[0;33m'
-## Input variables
+# Input variables
+checkall=0
 POSITIONAL=()
 while [[ $# -gt 0 ]]
 do
@@ -27,10 +30,10 @@ case $key in
     shift # past argument
     shift # past value
     ;;
-    # --default)
-    # DEFAULT=YES
-    # shift # past argument
-    # ;;
+    -a|--checkall)
+    checkall=1
+    shift # past argument
+    ;;
     *)    # unknown option
     POSITIONAL+=("$1") # save it in an array for later
     shift # past argument
@@ -39,27 +42,36 @@ esac
 done
 set -- "${POSITIONAL[@]}" # restore positional parameters
 
-# Show Script Information
+################################################################################
+######################## Show Script Information ###############################
+################################################################################
 if [ -z "$domain" ] ; then
 	  echo 'usage: ./bypass-firewalls-by-DNS-history.sh -d example.com'
     echo '-d --domain: domain to bypass'
-    echo "-o --outputfile: output file with IP's"
+    echo "-o --outputfile: output file with IP's only"
     echo '-l --listsubdomains: list with subdomains for extra coverage'
+    echo '-a --checkall: Check all subdomains for a WAF bypass'
     exit 0
 fi
+################################################################################
+######################## Various ###############################################
+################################################################################
 
 # Check if jq is installed
 jq --help >/dev/null 2>&1 || { echo >&2 "'jq' is needed for extra subdomain lookups, but it's not installed. Consider installing it for better results (eg.: 'apt install jq'). Aborting."; exit 1; }
 
 # Cleanup temp files when program was interrupted.
-rm /tmp/waf-bypass-* &> /dev/null
+rm /tmp/waf-bypass-*$domain* &> /dev/null
 
 # Add extra Subdomains
 if [ -n "$listsubdomains" ] ; then
-  cat $listsubdomains > /tmp/waf-bypass-domains.txt
+  cat $listsubdomains > /tmp/waf-bypass-alldomains-$domain.txt
 fi
 
-# Logo
+################################################################################
+######################## Show Logo  ############################################
+################################################################################
+
 cat << "EOF"
 -------------------------------------------------------------
  __          __     ______   _
@@ -74,10 +86,16 @@ Via DNS history. ( @vincentcox_be | vincentcox.com )
 -------------------------------------------------------------
 EOF
 
-# Matchmaking
-## Get the original content of the website to compare this to during the matchmaking
-curl --silent -o "/tmp/waf-bypass-https-$domain" "https://$domain"
-curl --silent -o "/tmp/waf-bypass-http-$domain" "http://$domain"
+################################################################################
+######################## Matchmaking function ##################################
+################################################################################
+# Purpose: Sometimes old IP's become different people's server. For example a
+# company uses a Digitalocean VPS and after one year they switched to amazon
+# so they remove their VPS instance. The IP is then released and then used by
+# some dude's server for a hobby project. To verify if we got a hit, we need
+# to inspect the HTML and compare it from the WAF and the direct IP and Calculate
+# a match percentage. This is exactly what we are going to do here.
+# This script is called later on in the script.
 
 ## Most sites redirect HTTP to HTTPS, so the response body of http will be empty, causing false positives to appear.
 {
@@ -90,9 +108,15 @@ fi
 function matchmaking {
 file1=$1
 file2=$2
+ip=$3
+matchmaking=$4
+domain=$5
+protocol=$6
+## Get the original content of the website to compare this to during the matchmaking
+curl --silent -o "/tmp/waf-bypass-https-$domain" "https://$domain"
+curl --silent -o "/tmp/waf-bypass-http-$domain" "http://$domain"
 touch $file1
 touch $file2
-ip=$3
 thread=$!
 sizefile1=$(cat $file1 | wc -l )
 sizefile2=$(cat $file2 | wc -l )
@@ -100,23 +124,37 @@ biggestsize=$(( $sizefile1 > $sizefile2 ? $sizefile1 : $sizefile2 ))
 if [[ $biggestsize -ne 0  ]]; then
   difference=$(( $(sdiff -B -b -s $file1 $file2 | wc -l) ))
   confidence_percentage=$(( 100 * (( $biggestsize - ${difference#-} )) / $biggestsize ))
-  echo "$ip" >> "$outfile"
-  echo -e "$ip | $confidence_percentage % | $(curl --silent https://ipinfo.io/$ip/org )" >>  /tmp/waf-bypass-output.txt
+  if [[ $confidence_percentage -gt 0 ]]; then
+    echo "$ip" >> "$outfile"
+    if [[ $checkall -le 0 ]];then
+      echo -e "$protocol://$ip | $confidence_percentage % | $(curl --silent https://ipinfo.io/$ip/org )" >>  /tmp/waf-bypass-output-$domain.txt
+    else
+      echo -e "$protocol://$domain | $ip | $confidence_percentage % | $(curl --silent https://ipinfo.io/$ip/org )" >>  /tmp/waf-bypass-output-$domain.txt
+    fi
+  fi
 
-  ### Debugging info
+  # ---- Debugging Info ----
   echo "$file1 $file2" >> /tmp/waf-bypass-thread-$thread.txt
-  echo "#Lines $file1: $(cat $file1 | wc -l)" >> /tmp/waf-bypass-thread-$thread.txt
-  echo "#Lines $file2: $(cat $file2 | wc -l)" >> /tmp/waf-bypass-thread-$thread.txt
+  echo "#Lines $file1: $sizefile1" >> /tmp/waf-bypass-thread-$thread.txt
+  echo "#Lines $file2: $sizefile2" >> /tmp/waf-bypass-thread-$thread.txt
   echo "Different lines: $difference" >> /tmp/waf-bypass-thread-$thread.txt
   echo -e "$ip | $confidence_percentage %" >> /tmp/waf-bypass-thread-$thread.txt
   echo "----" >> /tmp/waf-bypass-thread-$thread.txt
+  # if [ "$confidence_percentage" -gt 0 ]; then
+  # cat /tmp/waf-bypass-thread-$thread.txt
+  # fi
+
   # Uncomment the following line to output the debugging info.
   # cat /tmp/waf-bypass-thread-$thread.txt
+  # ++++ Debugging Info ++++
 fi
 }
 
-# Remove current IP's via nslookup
-currentips=$(nslookup $domain | grep -o '[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}')
+################################################################################
+######################## IP Validation #########################################
+################################################################################
+# Purpose: we need to check if the IP we find is not just the current IP and not
+# a public WAF service.
 
 # If no output file is specified
 if [ -z "$outfile" ]; then
@@ -182,7 +220,12 @@ do
 done
 }
 
-# Get subdomains from DNSDumpster
+################################################################################
+######################## Subdomain Gathering  ##################################
+################################################################################
+# Purpose: Subdomains can point to origin IP's behind the firewall (WAF).
+
+# Function to get subdomains from DNSDumpster
 function dnsdumpster_subdomains {
 domain=$1
 curl https://dnsdumpster.com -o /dev/null -c /tmp/dnsdumpster-$domain-cookies.txt -s
@@ -193,48 +236,92 @@ cat /tmp/dnsdumpster-$domain-output.txt | grep -oh "$regex" | sort -u
 rm /tmp/dnsdumpster-$domain-output.txt
 rm /tmp/dnsdumpster-$domain-cookies.txt
 }
-echo "$(dnsdumpster_subdomains $domain)" >> /tmp/waf-bypass-domains.txt
 
-
-# Gather possible IP's of the origin server
-## Subdomains: we will also get the ip's of subdomains. Sometimes this is hosted on the same server.
-## This is a quick subdomain function. This oneliner doesn't get all subdomains, but it's something.
-curl -s https://certspotter.com/api/v0/certs?domain=$domain | jq -c '.[].dns_names' | grep -o '"[^"]\+"' | grep "$domain" | sed 's/"//g' >> /tmp/waf-bypass-domains.txt
-echo "$domain" >> /tmp/waf-bypass-domains.txt # Add own domain
-cat  /tmp/waf-bypass-domains.txt | sort -u | grep -v -E '\*' >  /tmp/waf-bypass-domains-filtered.txt
+# DNSDumpster (call function)
+echo "$(dnsdumpster_subdomains $domain)" >> /tmp/waf-bypass-alldomains-$domain.txt
+# Certspotter
+curl -s https://certspotter.com/api/v0/certs?domain=$domain | jq -c '.[].dns_names' | grep -o '"[^"]\+"' | grep "$domain" | sed 's/"//g' >> /tmp/waf-bypass-alldomains-$domain.txt
+# Virustotal
+curl -s https://www.virustotal.com/ui/domains/$domain/subdomains\?limit\= | jq .data[].id | grep -o '"[^"]\+"' | grep "$domain" | sed 's/"//g' >> /tmp/waf-bypass-alldomains-$domain.txt
+# Add own domain
+echo "$domain" >> /tmp/waf-bypass-alldomains-$domain.txt
+# Filter unique ones + remove wildcards
+cat  /tmp/waf-bypass-alldomains-$domain.txt | sort -u | grep -v -E '\*' >  /tmp/waf-bypass-domains-filtered.txt
 # Read file to array. Readarray doesn't work on OS X, so we use the traditional way.
 while IFS=\= read var; do
     domainlist+=($var)
 done < /tmp/waf-bypass-domains-filtered.txt
+
+# ---- Debugging Info ----
 # echo "Using the IP's of the following (sub)domains for max coverage:"
 # echo $(echo ${domainlist[*]})
+# ++++ Debugging Info ++++
+
 echo -e "${YELLOW}[-] $(echo ${#domainlist[@]}) Domains collected...${NC}"
+
+################################################################################
+######################## Get IP's from subdomains  #############################
+################################################################################
+
 progresscounter=0
 for domainitem in "${domainlist[@]}"
 do
    progresscounter=$(($progresscounter+1))
    echo -ne "${YELLOW}[-] Scraping IP's from (sub)domains ($((100*$progresscounter/${#domainlist[@]}))%)${NC}\r"
    domainitem=$( echo $domainitem | tr -d '\n')
+   ### Source: viewdns.info
+   list_ips=$list_ips" "$( curl --max-time 10 -s -H 'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/71.0.3578.98 Safari/537.36' -H 'content-type: application/json;charset=UTF-8' -H 'accept: application/json, text/plain, */*' https://viewdns.info/iphistory/?domain=$domainitem | grep -o '[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}' | sort -u)
    ### Source: SecurityTrials
    list_ips=$list_ips" "$( curl --max-time 10 -s "https://securitytrails.com/domain/$domainitem/history/a" | grep -o '[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}' )
+   ### Source: Security Trials API (alternative)
+   list_ips=$list_ips" "$(curl -s "https://securitytrails.com/app/api/v1/history/$domainitem/dns/a?page=0" -H 'pragma: no-cache' -H 'origin: https://securitytrails.com' -H 'accept-encoding: gzip, deflate, br' -H 'accept-language: en-US,en;q=0.9,nl;q=0.8' -H 'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/71.0.3578.98 Safari/537.36' -H 'content-type: application/json;charset=UTF-8' -H 'accept: application/json, text/plain, */*' -H 'cache-control: no-cache' -H 'authority: securitytrails.com' -H "referer: https://securitytrails.com/domain/$domainitem/history/a" --data-binary '{"captcha":null,"_csrf_token":""}' --compressed | grep -o '[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}')
    ### Source: http://crimeflare.com/
    list_ips=$list_ips" "$( curl --max-time 15 -s 'http://www.crimeflare.com:82/cgi-bin/cfsearch.cgi' -H 'Connection: keep-alive' -H 'Pragma: no-cache' -H 'Cache-Control: no-cache' -H 'Origin: http://www.crimeflare.com:82' -H 'Upgrade-Insecure-Requests: 1' -H 'DNT: 1' -H 'Content-Type: application/x-www-form-urlencoded' -H 'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.67 Safari/537.36' -H 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8' -H 'Referer: http://www.crimeflare.com:82/cfs.html' -H 'Accept-Encoding: gzip, deflate' -H 'Accept-Language: en-US,en;q=0.9,nl;q=0.8' --data "cfS=$domainitem" --compressed  | grep -o '[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}' )
 done
-echo ""
+echo "" # Fix new line issue
 list_ips=$(echo $list_ips | tr " " "\n" | sort -u )
 echo -e "${YELLOW}[-] $( echo $list_ips | tr " " "\n" | wc -l | tr -d '[:space:]') IP's gathered from DNS history...${NC}"
+# ---- Debugging Info ----
+# echo -e "${YELLOW}[!] IP's: $(echo ${list_ips[*]}) ${NC}"
+# ++++ Debugging Info ++++
+################################################################################
+######################## Bypass Test ###########################################
+################################################################################
 # For each IP test the bypass and calculate the match %
-for ip in $list_ips;do
-  if [[ $(ip_is_waf $ip) -eq 0 ]];then
-    protocol="https"
-    (if (curl --fail --max-time 10 --silent -k "$protocol://$domain" --resolve "$domain:443:$ip" | grep "html" | grep -q -v "was rejected" );then if [[ $currentips != *"$ip"* ]];then curl --silent -o "/tmp/waf-bypass-$protocol-$ip" -k -H "Host: $domain" "$protocol"://"$ip"/ ; matchmaking "/tmp/waf-bypass-$protocol-$domain" "/tmp/waf-bypass-$protocol-$ip" "$ip";wait; fi; fi) & pid=$!;
-    PID_LIST+=" $pid";
-    protocol="http"
-    (if (curl --fail --max-time 10 --silent -k "$protocol://$domain" --resolve "$domain:80:$ip" | grep "html" | grep -q -v "was rejected" );then if [[ $currentips != *"$ip"* ]];then curl --silent -o "/tmp/waf-bypass-$protocol-$ip" -k -H "Host: $domain" "$protocol"://"$ip"/ ; matchmaking "/tmp/waf-bypass-$protocol-$domain" "/tmp/waf-bypass-$protocol-$ip" "$ip";wait; fi; fi) & pid=$!;
-    PID_LIST+=" $pid";
-  fi
+echo -e "${YELLOW}[-] Launching requests to origin servers...${NC}"
+if [[ $checkall -eq 0 ]];then
+  for ip in $list_ips;do
+    if [[ $(ip_is_waf $ip) -eq 0 ]];then
+      # Remove current IP's via nslookup
+      currentips=$(nslookup $domain | grep -o '[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}')
+      protocol="https"
+      (if (curl --fail --max-time 10 --silent -k "$protocol://$domain" --resolve "$domain:443:$ip" | grep "html" | grep -q -v "was rejected" );then if [[ $currentips != *"$ip"* ]];then curl --silent -o "/tmp/waf-bypass-$protocol-$ip-$domain" -k -H "Host: $domain" "$protocol"://"$ip"/ ; matchmaking "/tmp/waf-bypass-$protocol-$domain" "/tmp/waf-bypass-$protocol-$ip-$domain" "$ip" "$checkall" "$domain" "$protocol";wait; fi; fi) & pid=$!;
+      PID_LIST+=" $pid";
+      protocol="http"
+      (if (curl --fail --max-time 10 --silent -k "$protocol://$domain" --resolve "$domain:80:$ip" | grep "html" | grep -q -v "was rejected" );then if [[ $currentips != *"$ip"* ]];then curl --silent -o "/tmp/waf-bypass-$protocol-$ip-$domain" -k -H "Host: $domain" "$protocol"://"$ip"/ ; matchmaking "/tmp/waf-bypass-$protocol-$domain" "/tmp/waf-bypass-$protocol-$ip-$domain" "$ip" "$checkall" "$domain" "$protocol";wait; fi; fi) & pid=$!;
+      PID_LIST+=" $pid";
+    fi
+  done
+else
+for domainitem in "${domainlist[@]}";do
+  tempstorage=$domain
+  domain=$domainitem
+  for ip in $list_ips;do
+    if [[ $(ip_is_waf $ip) -eq 0 ]];then
+      # Remove current IP's via nslookup
+      currentips=$(nslookup $domain | grep -o '[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}')
+      protocol="https"
+      (if (curl --fail --max-time 10 --silent -k "$protocol://$domain" --resolve "$domain:443:$ip" | grep "html" | grep -q -v "was rejected" );then if [[ $currentips != *"$ip"* ]];then curl --silent -o "/tmp/waf-bypass-$protocol-$ip-$domain" -k -H "Host: $domain" "$protocol"://"$ip"/ ; matchmaking "/tmp/waf-bypass-$protocol-$domain" "/tmp/waf-bypass-$protocol-$ip-$domain" "$ip" "$checkall" "$domain" "$protocol";wait; fi; fi) & pid=$!;
+      PID_LIST+=" $pid";
+      protocol="http"
+      (if (curl --fail --max-time 10 --silent -k "$protocol://$domain" --resolve "$domain:80:$ip" | grep "html" | grep -q -v "was rejected" );then if [[ $currentips != *"$ip"* ]];then curl --silent -o "/tmp/waf-bypass-$protocol-$ip-$domain" -k -H "Host: $domain" "$protocol"://"$ip"/ ; matchmaking "/tmp/waf-bypass-$protocol-$domain" "/tmp/waf-bypass-$protocol-$ip-$domain" "$ip" "$checkall" "$domain" "$protocol";wait; fi; fi) & pid=$!;
+      PID_LIST+=" $pid";
+    fi
+  done
+  domain=$tempstorage
 done
-echo -e "${YELLOW}[-] Launched requests to origin servers...${NC}"
+fi
+echo -e "${YELLOW}[-] Waiting on replies from origin servers...${NC}"
 trap "kill $PID_LIST" SIGINT
 wait $PID_LIST
 if [ ! -f "$outfile" ]; then
@@ -242,20 +329,30 @@ if [ ! -f "$outfile" ]; then
 else
   echo -e "${GREEN}[+] Bypass found!${NC}"
 	sort -u -o "$outfile" "$outfile"
-  echo -e "[IP] | [Confidence] | [Organisation]" >>  /tmp/waf-bypass-output2.txt
-  cat /tmp/waf-bypass-output.txt >> /tmp/waf-bypass-output2.txt
-  cat /tmp/waf-bypass-output2.txt > /tmp/waf-bypass-output.txt
-
+  if [[ $checkall -eq 0 ]];then
+    echo -e "[IP] | [Confidence] | [Organisation]" >>  /tmp/waf-bypass-output-$domain-2.txt
+  else
+    echo -e "[Domain] | [IP] | [Confidence] | [Organisation]" >>  /tmp/waf-bypass-output-$domain-2.txt
+  fi
+  cat /tmp/waf-bypass-output-$domain.txt | sort -ur >> /tmp/waf-bypass-output-$domain-2.txt
+  cat /tmp/waf-bypass-output-$domain-2.txt > /tmp/waf-bypass-output-$domain.txt
 fi
 
-# New Output
-touch /tmp/waf-bypass-output.txt # If no IP's were found, the script will be empty.
-# TAC is needed to give priority to higher percentages. Otherwise you will burn valid bypasses
-if [[ "$OSTYPE" == "darwin"* ]]; then
-  cat "/tmp/waf-bypass-output.txt" | tail -r | sort -u -n | column -s"|" -t
-else
-  cat "/tmp/waf-bypass-output.txt" | tac | sort -u -n | column -s"|" -t
-fi
+################################################################################
+######################## Presenting output + cleanup ###########################
+################################################################################
+
+# When checkall is enabled, merge all results to main file
+for domainitem in "${domainlist[@]}"
+do
+  if [ "$domainitem" != "$domain" ];then
+    touch "/tmp/waf-bypass-output-$domainitem.txt"
+    cat "/tmp/waf-bypass-output-$domainitem.txt" >> "/tmp/waf-bypass-output-$domain.txt"
+  fi
+done
+
+touch /tmp/waf-bypass-output-$domain.txt # If no IP's were found, the script will be empty.
+cat "/tmp/waf-bypass-output-$domain.txt" | column -s"|" -t
 
 # Cleanup temp files
-rm /tmp/waf-bypass-*
+rm /tmp/waf-bypass-*$domain*
