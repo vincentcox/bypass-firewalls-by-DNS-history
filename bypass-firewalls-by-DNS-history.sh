@@ -68,6 +68,17 @@ if [ -n "$listsubdomains" ] ; then
   cat $listsubdomains > /tmp/waf-bypass-alldomains-$domain.txt
 fi
 
+# If no output file is specified
+if [ -z "$outfile" ]; then
+  outfile=/tmp/waf-bypass-$domain-out.txt # Get's removed anyway at the end of script.
+	if [ -f "$outfile" ]; then
+	  rm "$outfile"
+	fi
+  touch /tmp/waf-bypass-$domain-out.txt
+else
+  touch "$outfile"
+fi
+
 ################################################################################
 ######################## Show Logo  ############################################
 ################################################################################
@@ -147,22 +158,16 @@ if [[ $biggestsize -ne 0  ]]; then
   # Uncomment the following line to output the debugging info.
   # cat /tmp/waf-bypass-thread-$thread.txt
   # ++++ Debugging Info ++++
+  rm /tmp/waf-bypass-thread-$thread.txt
 fi
 }
+
 
 ################################################################################
 ######################## IP Validation #########################################
 ################################################################################
 # Purpose: we need to check if the IP we find is not just the current IP and not
 # a public WAF service.
-
-# If no output file is specified
-if [ -z "$outfile" ]; then
-  outfile=/tmp/waf-bypass-log.txt # Get's removed anyway at the end of script.
-	if [ -f "$outfile" ]; then
-	  rm "$outfile"
-	fi
-fi
 
 # Exclude Public Known WAF IP's
 PUBLICWAFS='103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 104.16.0.0/12 108.162.192.0/18 131.0.72.0/22 141.101.64.0/18 162.158.0.0/15 172.64.0.0/13 173.245.48.0/20 188.114.96.0/20 190.93.240.0/20 197.234.240.0/22 198.41.128.0/17 199.83.128.0/21 198.143.32.0/19 149.126.72.0/21 103.28.248.0/22 45.64.64.0/22 185.11.124.0/22 192.230.64.0/18 107.154.0.0/16 45.60.0.0/16 45.223.0.0/16'
@@ -221,6 +226,18 @@ done
 }
 
 ################################################################################
+################### Get Top Domain when sub is given  ##########################
+################################################################################
+function get_top_domain {
+  domain=$1
+  top_domain=$(curl -s "http://tldextract.appspot.com/api/extract?url=$domain" | jq ' .domain, .tld' | tr -d '"' |tr '\r\n' '.' | rev | cut -c2- | rev)
+  if [ "$domain" != "$top_domain" ]; then
+      echo $top_domain
+  fi
+}
+
+
+################################################################################
 ######################## Subdomain Gathering  ##################################
 ################################################################################
 # Purpose: Subdomains can point to origin IP's behind the firewall (WAF).
@@ -245,12 +262,14 @@ curl -s https://certspotter.com/api/v0/certs?domain=$domain | jq -c '.[].dns_nam
 curl -s https://www.virustotal.com/ui/domains/$domain/subdomains\?limit\= | jq .data[].id | grep -o '"[^"]\+"' | grep "$domain" | sed 's/"//g' >> /tmp/waf-bypass-alldomains-$domain.txt
 # Add own domain
 echo "$domain" >> /tmp/waf-bypass-alldomains-$domain.txt
+# Add main (top level) domain if subdomain is inputted domain
+echo "$(get_top_domain $domain)" >> /tmp/waf-bypass-alldomains-$domain.txt
 # Filter unique ones + remove wildcards
-cat  /tmp/waf-bypass-alldomains-$domain.txt | sort -u | grep -v -E '\*' >  /tmp/waf-bypass-domains-filtered.txt
+cat  /tmp/waf-bypass-alldomains-$domain.txt | sort -u | grep -v -E '\*' >  /tmp/waf-bypass-domains-filtered-$domain.txt
 # Read file to array. Readarray doesn't work on OS X, so we use the traditional way.
 while IFS=\= read var; do
     domainlist+=($var)
-done < /tmp/waf-bypass-domains-filtered.txt
+done < /tmp/waf-bypass-domains-filtered-$domain.txt
 
 # ---- Debugging Info ----
 # echo "Using the IP's of the following (sub)domains for max coverage:"
@@ -328,7 +347,8 @@ if [ ! -f "$outfile" ]; then
   echo -e "${RED}[-] No Bypass found!${NC}"
 else
   echo -e "${GREEN}[+] Bypass found!${NC}"
-	sort -u -o "$outfile" "$outfile"
+	sort -u -o "$outfile-tmp" "$outfile"
+  mv "$outfile-tmp" "$outfile"
   if [[ $checkall -eq 0 ]];then
     echo -e "[IP] | [Confidence] | [Organisation]" >>  /tmp/waf-bypass-output-$domain-2.txt
   else
