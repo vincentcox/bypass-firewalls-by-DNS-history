@@ -68,17 +68,6 @@ if [ -n "$listsubdomains" ] ; then
   cat $listsubdomains > /tmp/waf-bypass-alldomains-$domain.txt
 fi
 
-# If no output file is specified
-if [ -z "$outfile" ]; then
-  outfile=/tmp/waf-bypass-$domain-out.txt # Get's removed anyway at the end of script.
-	if [ -f "$outfile" ]; then
-	  rm "$outfile"
-	fi
-  touch /tmp/waf-bypass-$domain-out.txt
-else
-  touch "$outfile"
-fi
-
 ################################################################################
 ######################## Show Logo  ############################################
 ################################################################################
@@ -162,12 +151,18 @@ if [[ $biggestsize -ne 0  ]]; then
 fi
 }
 
-
 ################################################################################
 ######################## IP Validation #########################################
 ################################################################################
 # Purpose: we need to check if the IP we find is not just the current IP and not
 # a public WAF service.
+# If no output file is specified
+if [ -z "$outfile" ]; then
+  outfile=/tmp/waf-bypass-$domain-log.txt # Get's removed anyway at the end of script.
+fi
+if [ -f "$outfile" ]; then
+  rm "$outfile"
+fi
 
 # Exclude Public Known WAF IP's
 PUBLICWAFS='103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 104.16.0.0/12 108.162.192.0/18 131.0.72.0/22 141.101.64.0/18 162.158.0.0/15 172.64.0.0/13 173.245.48.0/20 188.114.96.0/20 190.93.240.0/20 197.234.240.0/22 198.41.128.0/17 199.83.128.0/21 198.143.32.0/19 149.126.72.0/21 103.28.248.0/22 45.64.64.0/22 185.11.124.0/22 192.230.64.0/18 107.154.0.0/16 45.60.0.0/16 45.223.0.0/16'
@@ -235,7 +230,6 @@ function get_top_domain {
       echo $top_domain
   fi
 }
-
 
 ################################################################################
 ######################## Subdomain Gathering  ##################################
