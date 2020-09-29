@@ -253,7 +253,7 @@ echo "$(dnsdumpster_subdomains $domain)" >> /tmp/waf-bypass-alldomains-$domain.t
 # Certspotter
 curl -s https://certspotter.com/api/v0/certs?domain=$domain | jq -c '.[].dns_names' | grep -o '"[^"]\+"' | grep "$domain" | sed 's/"//g' >> /tmp/waf-bypass-alldomains-$domain.txt
 # Virustotal
-curl -s https://www.virustotal.com/ui/domains/$domain/subdomains\?limit\= | jq .data[].id | grep -o '"[^"]\+"' | grep "$domain" | sed 's/"//g' >> /tmp/waf-bypass-alldomains-$domain.txt
+curl -H 'user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.83 Safari/537.36' -s https://www.virustotal.com/ui/domains/$domain/subdomains\?limit\= | jq '.data[].id' | grep -o '"[^"]\+"' | grep "$domain" | sed 's/"//g' >> /tmp/waf-bypass-alldomains-$domain.txt
 # Add own domain
 echo "$domain" >> /tmp/waf-bypass-alldomains-$domain.txt
 # Add main (top level) domain if subdomain is inputted domain
