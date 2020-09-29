@@ -3,7 +3,6 @@
 ######################## Constants and variables ###############################
 ################################################################################
 SCRIPTPATH="$( cd "$(dirname "$0")" ; pwd -P )"
-requestpath="signalr/ping"
 # Colors
 GREEN='\033[1;32m'
 NC='\033[0m' # No Color
@@ -28,11 +27,6 @@ case $key in
     ;;
     -l|--listsubdomains)
     listsubdomains="$2"
-    shift # past argument
-    shift # past value
-    ;;
-    -i|--listips)
-    userlistips="$2"
     shift # past argument
     shift # past value
     ;;
@@ -119,8 +113,8 @@ matchmaking=$4
 domain=$5
 protocol=$6
 ## Get the original content of the website to compare this to during the matchmaking
-curl --silent -o "/tmp/waf-bypass-https-$domain" "https://$domain/$requestpath"
-curl --silent -o "/tmp/waf-bypass-http-$domain" "http://$domain/$requestpath"
+curl --silent -o "/tmp/waf-bypass-https-$domain" "https://$domain"
+curl --silent -o "/tmp/waf-bypass-http-$domain" "http://$domain"
 touch $file1
 touch $file2
 thread=$!
@@ -259,7 +253,7 @@ echo "$(dnsdumpster_subdomains $domain)" >> /tmp/waf-bypass-alldomains-$domain.t
 # Certspotter
 curl -s https://certspotter.com/api/v0/certs?domain=$domain | jq -c '.[].dns_names' | grep -o '"[^"]\+"' | grep "$domain" | sed 's/"//g' >> /tmp/waf-bypass-alldomains-$domain.txt
 # Virustotal
-curl -H 'user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.83 Safari/537.36' -s https://www.virustotal.com/ui/domains/$domain/subdomains\?limit\= | jq '.data[].id' | grep -o '"[^"]\+"' | grep "$domain" | sed 's/"//g' >> /tmp/waf-bypass-alldomains-$domain.txt
+curl -s https://www.virustotal.com/ui/domains/$domain/subdomains\?limit\= | jq .data[].id | grep -o '"[^"]\+"' | grep "$domain" | sed 's/"//g' >> /tmp/waf-bypass-alldomains-$domain.txt
 # Add own domain
 echo "$domain" >> /tmp/waf-bypass-alldomains-$domain.txt
 # Add main (top level) domain if subdomain is inputted domain
@@ -297,23 +291,9 @@ do
    ### Source: http://crimeflare.com/
    list_ips=$list_ips" "$( curl --max-time 15 -s 'http://www.crimeflare.com:82/cgi-bin/cfsearch.cgi' -H 'Connection: keep-alive' -H 'Pragma: no-cache' -H 'Cache-Control: no-cache' -H 'Origin: http://www.crimeflare.com:82' -H 'Upgrade-Insecure-Requests: 1' -H 'DNT: 1' -H 'Content-Type: application/x-www-form-urlencoded' -H 'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.67 Safari/537.36' -H 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8' -H 'Referer: http://www.crimeflare.com:82/cfs.html' -H 'Accept-Encoding: gzip, deflate' -H 'Accept-Language: en-US,en;q=0.9,nl;q=0.8' --data "cfS=$domainitem" --compressed  | grep -o '[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}' )
 done
-if [ -n "$userlistips" ] ; then
-  if [ -f "$userlistips" ]; then
-    while IFS= read -r line; do
-      list_ips="$list_ips $line"
-    done < $userlistips
-    #echo $list_ips
-  else
-      echo -e "${RED}[-] IP list $userlistips does not exist!${NC}"
-  fi
-fi
 echo "" # Fix new line issue
 list_ips=$(echo $list_ips | tr " " "\n" | sort -u )
-if [ -n "$userlistips" ] ; then
-  echo -e "${YELLOW}[-] $( echo $list_ips | tr " " "\n" | wc -l | tr -d '[:space:]') IP's gathered from DNS history and provided IP list...${NC}"
-else
-  echo -e "${YELLOW}[-] $( echo $list_ips | tr " " "\n" | wc -l | tr -d '[:space:]') IP's gathered from DNS history...${NC}"
-fi
+echo -e "${YELLOW}[-] $( echo $list_ips | tr " " "\n" | wc -l | tr -d '[:space:]') IP's gathered from DNS history...${NC}"
 # ---- Debugging Info ----
 # echo -e "${YELLOW}[!] IP's: $(echo ${list_ips[*]}) ${NC}"
 # ++++ Debugging Info ++++
@@ -328,10 +308,10 @@ if [[ $checkall -eq 0 ]];then
       # Remove current IP's via nslookup
       currentips=$(nslookup $domain | grep -o '[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}')
       protocol="https"
-      (if (curl --fail --max-time 10 --silent -k "$protocol://$domain/$requestpath" --resolve "$domain:443:$ip" | grep "html" | grep -q -v "was rejected" );then if [[ $currentips != *"$ip"* ]];then curl --silent -o "/tmp/waf-bypass-$protocol-$ip-$domain" -k -H "Host: $domain" "$protocol"://"$ip"/"$requestpath" ; matchmaking "/tmp/waf-bypass-$protocol-$domain" "/tmp/waf-bypass-$protocol-$ip-$domain" "$ip" "$checkall" "$domain" "$protocol";wait; fi; fi) & pid=$!;
+      (if (curl --fail --max-time 10 --silent -k "$protocol://$domain" --resolve "$domain:443:$ip" | grep "html" | grep -q -v "was rejected" );then if [[ $currentips != *"$ip"* ]];then curl --silent -o "/tmp/waf-bypass-$protocol-$ip-$domain" -k -H "Host: $domain" "$protocol"://"$ip"/ ; matchmaking "/tmp/waf-bypass-$protocol-$domain" "/tmp/waf-bypass-$protocol-$ip-$domain" "$ip" "$checkall" "$domain" "$protocol";wait; fi; fi) & pid=$!;
       PID_LIST+=" $pid";
       protocol="http"
-      (if (curl --fail --max-time 10 --silent -k "$protocol://$domain/$requestpath" --resolve "$domain:80:$ip" | grep "html" | grep -q -v "was rejected" );then if [[ $currentips != *"$ip"* ]];then curl --silent -o "/tmp/waf-bypass-$protocol-$ip-$domain" -k -H "Host: $domain" "$protocol"://"$ip"/"$requestpath" ; matchmaking "/tmp/waf-bypass-$protocol-$domain" "/tmp/waf-bypass-$protocol-$ip-$domain" "$ip" "$checkall" "$domain" "$protocol";wait; fi; fi) & pid=$!;
+      (if (curl --fail --max-time 10 --silent -k "$protocol://$domain" --resolve "$domain:80:$ip" | grep "html" | grep -q -v "was rejected" );then if [[ $currentips != *"$ip"* ]];then curl --silent -o "/tmp/waf-bypass-$protocol-$ip-$domain" -k -H "Host: $domain" "$protocol"://"$ip"/ ; matchmaking "/tmp/waf-bypass-$protocol-$domain" "/tmp/waf-bypass-$protocol-$ip-$domain" "$ip" "$checkall" "$domain" "$protocol";wait; fi; fi) & pid=$!;
       PID_LIST+=" $pid";
     fi
   done
@@ -344,10 +324,10 @@ for domainitem in "${domainlist[@]}";do
       # Remove current IP's via nslookup
       currentips=$(nslookup $domain | grep -o '[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}')
       protocol="https"
-      (if (curl --fail --max-time 10 --silent -k "$protocol://$domain/$requestpath" --resolve "$domain:443:$ip" | grep "html" | grep -q -v "was rejected" );then if [[ $currentips != *"$ip"* ]];then curl --silent -o "/tmp/waf-bypass-$protocol-$ip-$domain" -k -H "Host: $domain" "$protocol"://"$ip"/"$requestpath" ; matchmaking "/tmp/waf-bypass-$protocol-$domain" "/tmp/waf-bypass-$protocol-$ip-$domain" "$ip" "$checkall" "$domain" "$protocol";wait; fi; fi) & pid=$!;
+      (if (curl --fail --max-time 10 --silent -k "$protocol://$domain" --resolve "$domain:443:$ip" | grep "html" | grep -q -v "was rejected" );then if [[ $currentips != *"$ip"* ]];then curl --silent -o "/tmp/waf-bypass-$protocol-$ip-$domain" -k -H "Host: $domain" "$protocol"://"$ip"/ ; matchmaking "/tmp/waf-bypass-$protocol-$domain" "/tmp/waf-bypass-$protocol-$ip-$domain" "$ip" "$checkall" "$domain" "$protocol";wait; fi; fi) & pid=$!;
       PID_LIST+=" $pid";
       protocol="http"
-      (if (curl --fail --max-time 10 --silent -k "$protocol://$domain/$requestpath" --resolve "$domain:80:$ip" | grep "html" | grep -q -v "was rejected" );then if [[ $currentips != *"$ip"* ]];then curl --silent -o "/tmp/waf-bypass-$protocol-$ip-$domain" -k -H "Host: $domain" "$protocol"://"$ip"/"$requestpath" ; matchmaking "/tmp/waf-bypass-$protocol-$domain" "/tmp/waf-bypass-$protocol-$ip-$domain" "$ip" "$checkall" "$domain" "$protocol";wait; fi; fi) & pid=$!;
+      (if (curl --fail --max-time 10 --silent -k "$protocol://$domain" --resolve "$domain:80:$ip" | grep "html" | grep -q -v "was rejected" );then if [[ $currentips != *"$ip"* ]];then curl --silent -o "/tmp/waf-bypass-$protocol-$ip-$domain" -k -H "Host: $domain" "$protocol"://"$ip"/ ; matchmaking "/tmp/waf-bypass-$protocol-$domain" "/tmp/waf-bypass-$protocol-$ip-$domain" "$ip" "$checkall" "$domain" "$protocol";wait; fi; fi) & pid=$!;
       PID_LIST+=" $pid";
     fi
   done
